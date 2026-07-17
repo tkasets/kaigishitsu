@@ -2065,11 +2065,18 @@ class DeskLayoutErrorBoundary extends React.Component {
     return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
-// Google H5 Games Ads (AdSense) のインタースティシャル広告をゲームの区切りで表示し、
-// 広告の有無にかかわらず最後に `done` を呼ぶ。SDK未ロード時(ローカル開発やブロック時)は
-// 即座に `done` を実行してフローを止めない。adBreakDone は Google 側が必ず呼ぶ契約だが、
-// 万一発火しない場合の保険としてタイムアウトも仕込む。
-function showAdThen(name, done) {
+// AdSense審査通過 & ゲーム向け広告(H5 Games Ads)有効化 後に true にすると、実際の
+// インタースティシャル広告(window.adBreak)を表示するようになる。false の間は下の
+// プレースホルダー画面(AdPlaceholder)を表示する。審査中は実広告が配信されず adBreakDone
+// が返らないため、必ず false のままにしておくこと(true だとボタン押下時に固まる)。
+const USE_REAL_ADS = false;
+// プレースホルダー広告の表示秒数。
+const AD_PLACEHOLDER_SECONDS = 3;
+
+// Google H5 Games Ads (AdSense) の実インタースティシャル広告をゲームの区切りで表示し、
+// 広告の有無にかかわらず最後に `done` を呼ぶ。SDK未ロード時は即 `done`。adBreakDone は
+// Google 側が必ず呼ぶ契約だが、万一発火しない場合の保険としてタイムアウトも仕込む。
+function requestRealAd(name, done) {
   if (typeof window !== "undefined" && typeof window.adBreak === "function") {
     let finished = false;
     const finish = () => {
@@ -2083,10 +2090,48 @@ function showAdThen(name, done) {
       finish();
       return;
     }
-    setTimeout(finish, 8000);
+    setTimeout(finish, 5000);
   } else {
     done();
   }
+}
+
+// 実広告が出せない期間(審査中など)に表示する広告の代わりの全画面。カウントダウン後に
+// 自動で閉じ、いつでも「スキップ」で閉じられる。onDone は必ず1回だけ呼ぶ。
+function AdPlaceholder({ onDone }) {
+  const [remaining, setRemaining] = useState(AD_PLACEHOLDER_SECONDS);
+  const firedRef = useRef(false);
+  const finish = () => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onDone();
+  };
+  useEffect(() => {
+    if (remaining <= 0) {
+      finish();
+      return;
+    }
+    const t = setTimeout(() => setRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#111", zIndex: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ color: "#8A8A86", fontSize: 12, letterSpacing: 2, marginBottom: 16 }}>広告 / Advertisement</div>
+      <div style={{ width: "100%", maxWidth: 360, aspectRatio: "3 / 4", maxHeight: "60vh", background: "#1E1E1E", border: "1px dashed #444", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: "#666", fontSize: 14 }}>
+        広告の表示エリア
+      </div>
+      <div style={{ color: "#8A8A86", fontSize: 12, marginTop: 16 }}>
+        {remaining > 0 ? `${remaining} 秒後に続行します` : "続行中…"}
+      </div>
+      <button
+        onClick={finish}
+        style={{ marginTop: 20, padding: "8px 20px", borderRadius: 8, border: "1px solid #555", background: "transparent", color: "#CFCFCB", cursor: "pointer", fontSize: 13 }}
+      >
+        スキップ ▶
+      </button>
+    </div>
+  );
 }
 
 export default function DeskLayoutPuzzleWithBoundary() {
@@ -2130,6 +2175,17 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
   const [showItoComment, setShowItoComment] = useState(false);
   const [showSpecialEvent, setShowSpecialEvent] = useState(false);
   const [specialEventStep, setSpecialEventStep] = useState(0); // 0: レイアート宣言, 1: 2年後...
+  const [adOverlay, setAdOverlay] = useState(null); // 広告表示待ちのコールバック { done } | null
+
+  // 広告を表示してから done を実行する。USE_REAL_ADS が true なら実広告、false なら
+  // プレースホルダー画面を出す。
+  function showAdThen(name, done) {
+    if (USE_REAL_ADS) {
+      requestRealAd(name, done);
+    } else {
+      setAdOverlay({ done });
+    }
+  }
   const roomPreviewWrapRef = useRef(null);
   const radarChartWrapRef = useRef(null);
   const [showMetricsPanel, setShowMetricsPanel] = useState(false);
@@ -2731,6 +2787,15 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
 
   return (
     <div style={{ background: "#FBFBFA", height: "100svh", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "'Hiragino Mincho ProN', 'Yu Mincho', 'YuMincho', 'MS PMincho', serif" }}>
+      {adOverlay && (
+        <AdPlaceholder
+          onDone={() => {
+            const done = adOverlay.done;
+            setAdOverlay(null);
+            done();
+          }}
+        />
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", flexShrink: 0, flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {onBackHome && (
