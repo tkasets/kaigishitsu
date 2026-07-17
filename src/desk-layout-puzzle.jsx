@@ -1956,12 +1956,12 @@ function IntroHomeScreen({ onStart, onCharacters, ready, legendaryEventTriggered
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 16px", overflow: "hidden" }}>
-        <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", justifyContent: "center", gap: 20, maxWidth: 640, width: "100%" }}>
+        <div style={{ display: "flex", flexWrap: "nowrap", alignItems: "center", justifyContent: "center", gap: 20, maxWidth: 640, width: "100%", height: "100%" }}>
           <div style={{ flex: "1 1 auto", minWidth: 0, textAlign: "left" }}>
             <div style={{ fontSize: "clamp(12px, 3.4vw, 15px)", lineHeight: 1.9, whiteSpace: "pre" }}>{introText}</div>
             <div style={{ fontSize: 11, color: "#B0B0AA", marginTop: 20 }}>※実在の企業や団体、人物とは一切関係はございません。</div>
           </div>
-          <img src={OKAMURA_FULL_IMG} alt="岡村" style={{ width: "clamp(90px, 30vw, 180px)", flex: "0 0 auto", display: "block" }} />
+          <img src={OKAMURA_FULL_IMG} alt="岡村" style={{ maxWidth: "clamp(90px, 30vw, 180px)", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain", flex: "0 0 auto", display: "block" }} />
         </div>
       </div>
       <div style={{ display: "flex", justifyContent: "center", padding: "0 24px 40px", flexShrink: 0 }}>
