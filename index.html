@@ -40,6 +40,25 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Google H5 Games Ads (AdSense) — ホームに戻る / 評価画面の終了時に
+      インタースティシャル広告を表示するために使用。
+      AdSenseパブリッシャーID: ca-pub-1081803676733486
+      審査通過後、AdSense管理画面で「ゲーム向け広告(H5 Games Ads)」が有効になると配信される。
+    -->
+    <script
+      async
+      data-ad-frequency-hint="30s"
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1081803676733486"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      window.adsbygoogle = window.adsbygoogle || [];
+      window.adBreak = window.adConfig = function (o) {
+        window.adsbygoogle.push(o);
+      };
+      window.adConfig({ preloadAdBreaks: "on", sound: "on" });
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

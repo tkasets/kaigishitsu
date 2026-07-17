@@ -2065,6 +2065,30 @@ class DeskLayoutErrorBoundary extends React.Component {
     return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
+// Google H5 Games Ads (AdSense) のインタースティシャル広告をゲームの区切りで表示し、
+// 広告の有無にかかわらず最後に `done` を呼ぶ。SDK未ロード時(ローカル開発やブロック時)は
+// 即座に `done` を実行してフローを止めない。adBreakDone は Google 側が必ず呼ぶ契約だが、
+// 万一発火しない場合の保険としてタイムアウトも仕込む。
+function showAdThen(name, done) {
+  if (typeof window !== "undefined" && typeof window.adBreak === "function") {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      done();
+    };
+    try {
+      window.adBreak({ type: "next", name, adBreakDone: finish });
+    } catch (e) {
+      finish();
+      return;
+    }
+    setTimeout(finish, 8000);
+  } else {
+    done();
+  }
+}
+
 export default function DeskLayoutPuzzleWithBoundary() {
   const [screen, setScreen] = useState("home"); // "home" | "characters" | "layout"
   const [introReady, setIntroReady] = useState(false);
@@ -2175,13 +2199,17 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
   // instead of leaving normally.
   function handleFinish() {
     if (!legendaryEventTriggered && allMetricsHigh(metricsForScoring)) {
+      // 覚醒イベント(レイアート演出)発生時は広告を出さずにそのまま演出へ進む。
       setLegendaryEventTriggered(true);
       setSpecialEventStep(0);
       setShowSpecialEvent(true);
       return;
     }
-    setShowComplete(false);
-    if (onBackHome) onBackHome();
+    // 通常終了時はホームに戻る前に広告を表示する。
+    showAdThen("finish", () => {
+      setShowComplete(false);
+      if (onBackHome) onBackHome();
+    });
   }
 
   const svgW = MARGIN * 2 + roomW * SCALE;
@@ -2745,7 +2773,8 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
               <button
                 onClick={() => {
                   setShowLeaveConfirm(false);
-                  onBackHome();
+                  // ホームに戻る前に広告を表示する。
+                  showAdThen("back-home", () => onBackHome());
                 }}
                 style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: ACCENT, color: "#FFFFFF", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}
               >
