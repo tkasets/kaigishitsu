@@ -41,6 +41,12 @@
           "userTrackingUsageDescription": "このアプリはあなたに関連性の高い広告を表示するために識別子を使用します。"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "794bad7d-4692-4df4-a589-1d081ee44395"
+      }
+    },
+    "owner": "tsuyoshiponne"
   }
 }

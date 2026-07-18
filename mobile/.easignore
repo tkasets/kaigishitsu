@@ -1,0 +1,12 @@
+# EAS Build にアップロードしないもの。
+# .easignore があると EAS は .gitignore ではなくこちらを使う。
+# assets/app.html は .gitignore では除外しているが、EAS では
+# アップロードする必要があるため、ここには含めない。
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+ios/
+android/
