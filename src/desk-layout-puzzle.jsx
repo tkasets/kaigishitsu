@@ -1477,14 +1477,19 @@ function seatWorkspacePoly(chairX, chairY, rotDeg, desks) {
   const center = [chairX + Math.cos(facingRad) * (0.5 + H / 2), chairY + Math.sin(facingRad) * (0.5 + H / 2)];
   return rectVerts(center[0], center[1], facingRad, 1, H);
 }
-function triangleStr(cxPx, cyPx, rotDeg, R) {
+// 椅子の円の「外側」に少しだけ突き出す小さな三角(向きの出っ張り)。rot 方向を指す。
+// base を円周のわずか内側に置いて円の輪郭と重ね、tip を円の外へ少しはみ出させる。
+function outerTriangleStr(cxPx, cyPx, rotDeg, R) {
   const rad = (rotDeg * Math.PI) / 180;
-  const tip = [cxPx + Math.cos(rad) * R * 0.85, cyPx + Math.sin(rad) * R * 0.85];
+  const dir = [Math.cos(rad), Math.sin(rad)];
   const perp = [-Math.sin(rad), Math.cos(rad)];
-  const back = [cxPx - Math.cos(rad) * R * 0.35, cyPx - Math.sin(rad) * R * 0.35];
-  const w = R * 0.55;
-  const b1 = [back[0] + perp[0] * w, back[1] + perp[1] * w];
-  const b2 = [back[0] - perp[0] * w, back[1] - perp[1] * w];
+  const baseR = R * 0.92; // 円周のわずか内側から生やす
+  const tipR = R * 1.3; // 円の外へ少しだけ突き出す
+  const halfW = R * 0.42;
+  const tip = [cxPx + dir[0] * tipR, cyPx + dir[1] * tipR];
+  const base = [cxPx + dir[0] * baseR, cyPx + dir[1] * baseR];
+  const b1 = [base[0] + perp[0] * halfW, base[1] + perp[1] * halfW];
+  const b2 = [base[0] - perp[0] * halfW, base[1] - perp[1] * halfW];
   return `${tip.join(",")} ${b1.join(",")} ${b2.join(",")}`;
 }
 
@@ -1678,8 +1683,8 @@ function RoomPreview({ desks, chairs, doors, roomW, roomH }) {
             cyPx = toPxLocal(c.y);
           return (
             <g key={"pc" + c.id}>
+              <polygon points={outerTriangleStr(cxPx, cyPx, c.rot, r)} fill="#6B6B66" />
               <circle cx={cxPx} cy={cyPx} r={r} fill="#FFFFFF" stroke="#6B6B66" strokeWidth={chairStroke} />
-              <polygon points={triangleStr(cxPx, cyPx, c.rot, r)} fill="#6B6B66" />
             </g>
           );
         })}
@@ -2096,6 +2101,40 @@ function requestRealAd(name, done) {
   }
 }
 
+// ネイティブアプリ(Expo/WebView)版で、React Native 側に AdMob 広告表示を依頼する。
+// window.ReactNativeWebView.postMessage で {type:'show-ad'} を送り、広告が閉じたら
+// ネイティブ側が window.__kaigiResumeAd() を注入して done() を呼び戻す。
+// ネイティブが応答しない/広告が無い場合の保険として 8 秒でタイムアウト続行する。
+function requestNativeAd(done) {
+  if (typeof window !== "undefined" && window.ReactNativeWebView) {
+    window.__kaigiAdDone = done;
+    if (window.__kaigiAdTimer) clearTimeout(window.__kaigiAdTimer);
+    window.__kaigiAdTimer = setTimeout(() => {
+      const f = window.__kaigiAdDone;
+      window.__kaigiAdDone = null;
+      window.__kaigiAdTimer = null;
+      if (typeof f === "function") f();
+    }, 8000);
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "show-ad" }));
+  } else {
+    // WebView 外(通常ブラウザ等)ではそのまま続行
+    done();
+  }
+}
+
+// ネイティブ側から広告終了時に呼ばれる。保留していた done() を実行する。
+if (typeof window !== "undefined") {
+  window.__kaigiResumeAd = function () {
+    if (window.__kaigiAdTimer) {
+      clearTimeout(window.__kaigiAdTimer);
+      window.__kaigiAdTimer = null;
+    }
+    const f = window.__kaigiAdDone;
+    window.__kaigiAdDone = null;
+    if (typeof f === "function") f();
+  };
+}
+
 // 実広告が出せない期間(審査中など)に表示する広告の代わりの全画面。カウントダウン後に
 // 自動で閉じ、いつでも「スキップ」で閉じられる。onDone は必ず1回だけ呼ぶ。
 function AdPlaceholder({ onDone }) {
@@ -2180,7 +2219,11 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
   // 広告を表示してから done を実行する。USE_REAL_ADS が true なら実広告、false なら
   // プレースホルダー画面を出す。
   function showAdThen(name, done) {
-    if (USE_REAL_ADS) {
+    // ネイティブアプリ版(VITE_NATIVE_APP)は AdMob のインタースティシャルを
+    // ネイティブ側に依頼し、広告が閉じてから done() を呼ぶ(requestNativeAd)。
+    if (import.meta.env.VITE_NATIVE_APP) {
+      requestNativeAd(done);
+    } else if (USE_REAL_ADS) {
       requestRealAd(name, done);
     } else {
       setAdOverlay({ done });
@@ -3194,8 +3237,8 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
                   return (
                     <g key={"c" + c.id} onPointerDown={(e) => onChairPointerDown(e, c.id)} style={{ cursor: "grab" }}>
                       {ringColor && <circle cx={cxPx} cy={cyPx} r={R + 4} fill="none" stroke={ringColor} strokeWidth={2} />}
+                      <polygon points={outerTriangleStr(cxPx, cyPx, rot, R)} fill={isSel ? CHART_BLUE : "#6B6B66"} />
                       <circle cx={cxPx} cy={cyPx} r={R} fill={isSel ? "#EEF3FF" : "#FFFFFF"} stroke={isSel ? CHART_BLUE : "#6B6B66"} strokeWidth={isSel ? 2 : 1.6} />
-                      <polygon points={triangleStr(cxPx, cyPx, rot, R)} fill={isSel ? CHART_BLUE : "#6B6B66"} />
                     </g>
                   );
                 })}

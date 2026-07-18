@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+ios/
+android/
+
+# `npm run build:app`(リポジトリ直下)で生成されるゲーム本体。ビルド成果物なのでコミットしない。
+assets/app.html
+
+# Viteがpublic/CNAMEを毎回コピーしてくるので除外
+assets/CNAME

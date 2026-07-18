@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:app": "vite build --config vite.config.app.js",
+    "app": "npm run build:app && cd mobile && npx expo start",
+    "app:ios": "npm run build:app && cd mobile && npx eas build --platform ios --profile production",
+    "app:submit": "cd mobile && npx eas submit --platform ios --latest"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
@@ -15,6 +19,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }
