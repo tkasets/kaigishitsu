@@ -26,7 +26,7 @@ try {
 export const adsAvailable = !!GMA;
 
 // 本番の実広告ユニットID(要差し替え)。
-const PROD_INTERSTITIAL_IOS = "ca-app-pub-0000000000000000/0000000000";
+const PROD_INTERSTITIAL_IOS = "ca-app-pub-1081803676733486/9077120640";
 const PROD_INTERSTITIAL_ANDROID = "ca-app-pub-0000000000000000/0000000000";
 
 export function interstitialUnitId() {

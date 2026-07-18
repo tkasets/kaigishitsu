@@ -26,13 +26,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const webRef = useRef(null);
   // インタースティシャル広告の状態を保持
-  const adRef = useRef({ ad: null, loaded: false, resume: null });
+  const adRef = useRef({ ad: null, loaded: false, pending: false });
 
-  // WebView にゲーム続行(保留していた done())を伝える
-  const resumeGame = useCallback(() => {
+  // WebView に広告結果を伝える。
+  //  'shown' … 実広告を表示済み → ゲームはそのまま続行
+  //  'none'  … 広告が無い → ゲーム側が代わりのプレースホルダーを表示
+  const sendAdResult = useCallback((result) => {
     if (webRef.current) {
       webRef.current.injectJavaScript(
-        "window.__kaigiResumeAd && window.__kaigiResumeAd(); true;"
+        `window.__kaigiAdResult && window.__kaigiAdResult(${JSON.stringify(result)}); true;`
       );
     }
   }, []);
@@ -51,23 +53,32 @@ export default function App() {
       const onLoaded = () => {
         adRef.current.loaded = true;
       };
-      const onClosedOrError = () => {
-        // 広告が閉じた/失敗 → 保留中ならゲーム続行し、次を先読み
-        const r = adRef.current.resume;
-        adRef.current.resume = null;
-        if (r) resumeGame();
+      const onClosed = () => {
+        // 実広告が閉じた → 保留中なら「表示済み」を通知し、次を先読み
+        if (adRef.current.pending) {
+          adRef.current.pending = false;
+          sendAdResult("shown");
+        }
         loadInterstitial();
       };
+      const onError = () => {
+        // 読み込み/表示に失敗 → 保留中なら「広告なし」を通知(プレースホルダーへ)
+        adRef.current.loaded = false;
+        if (adRef.current.pending) {
+          adRef.current.pending = false;
+          sendAdResult("none");
+        }
+      };
       ad.addAdEventListener(GMA.AdEventType.LOADED, onLoaded);
-      ad.addAdEventListener(GMA.AdEventType.CLOSED, onClosedOrError);
-      ad.addAdEventListener(GMA.AdEventType.ERROR, onClosedOrError);
+      ad.addAdEventListener(GMA.AdEventType.CLOSED, onClosed);
+      ad.addAdEventListener(GMA.AdEventType.ERROR, onError);
       ad.load();
     } catch (e) {
       // 何かあってもゲームは止めない
       adRef.current.ad = null;
       adRef.current.loaded = false;
     }
-  }, [resumeGame]);
+  }, [sendAdResult]);
 
   useEffect(() => {
     if (!adsAvailable || !GMA) return;
@@ -84,22 +95,23 @@ export default function App() {
   const handleShowAd = useCallback(() => {
     const state = adRef.current;
     if (adsAvailable && state.ad && state.loaded) {
-      // 広告を表示。閉じたら onClosedOrError で resumeGame される。
-      state.resume = true;
+      // 実広告を表示。閉じたら onClosed で 'shown' を通知する。
+      state.pending = true;
       state.loaded = false;
       try {
         state.ad.show();
       } catch (e) {
-        state.resume = null;
-        resumeGame();
+        // 表示できなかった → プレースホルダー表示に切り替え
+        state.pending = false;
+        sendAdResult("none");
         loadInterstitial();
       }
     } else {
-      // 広告未準備(Expo Go含む) → ゲームは止めずに続行し、次を読み込む
-      resumeGame();
+      // 広告が未準備(Expo Go / 在庫なし) → ゲーム側のプレースホルダーを表示させ、次を読み込む
+      sendAdResult("none");
       loadInterstitial();
     }
-  }, [resumeGame, loadInterstitial]);
+  }, [sendAdResult, loadInterstitial]);
 
   const onMessage = useCallback(
     (event) => {
