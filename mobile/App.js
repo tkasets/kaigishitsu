@@ -53,6 +53,12 @@ export default function App() {
       const onLoaded = () => {
         adRef.current.loaded = true;
       };
+      const onOpened = () => {
+        // 実広告の表示が始まった → ゲーム側の「応答なし」保険タイマーを止めさせる。
+        // これを送らないと、広告の表示中にタイマーが先に切れて「広告なし」扱いになり、
+        // 広告が閉じた後にゲーム側のプレースホルダーが余分に表示されてしまう。
+        if (adRef.current.pending) sendAdResult("opened");
+      };
       const onClosed = () => {
         // 実広告が閉じた → 保留中なら「表示済み」を通知し、次を先読み
         if (adRef.current.pending) {
@@ -70,6 +76,7 @@ export default function App() {
         }
       };
       ad.addAdEventListener(GMA.AdEventType.LOADED, onLoaded);
+      ad.addAdEventListener(GMA.AdEventType.OPENED, onOpened);
       ad.addAdEventListener(GMA.AdEventType.CLOSED, onClosed);
       ad.addAdEventListener(GMA.AdEventType.ERROR, onError);
       ad.load();

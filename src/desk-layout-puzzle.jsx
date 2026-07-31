@@ -2150,6 +2150,10 @@ export default function DeskLayoutPuzzleWithBoundary() {
   const [introKey, setIntroKey] = useState(0); // bump this to replay the button fade-in on the home screen
   const [legendaryEventTriggered, setLegendaryEventTriggered] = useState(false);
   const [commentTurn, setCommentTurn] = useState(0);
+  // showAdThen が呼ばれた回数(2回に1回だけ広告を出すためのカウンタ)。
+  // DeskLayoutPuzzle はホームに戻るたびにアンマウントされる(=その中の useRef はリセットされる)ため、
+  // アンマウントを跨いで生き続けるこの親コンポーネント側で保持する。
+  const adRequestCountRef = useRef(0);
   useEffect(() => {
     const t = setTimeout(() => setIntroReady(true), 3000);
     return () => clearTimeout(t);
@@ -2169,11 +2173,12 @@ export default function DeskLayoutPuzzleWithBoundary() {
         setLegendaryEventTriggered={setLegendaryEventTriggered}
         commentTurn={commentTurn}
         setCommentTurn={setCommentTurn}
+        adRequestCountRef={adRequestCountRef}
       />
     </DeskLayoutErrorBoundary>
   );
 }
-function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, setLegendaryEventTriggered, commentTurn, setCommentTurn }) {
+function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, setLegendaryEventTriggered, commentTurn, setCommentTurn, adRequestCountRef }) {
   const [roomW, setRoomW] = useState(8);
   const [roomH, setRoomH] = useState(6);
   const [desks, setDesks] = useState([]);
@@ -2189,10 +2194,21 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
   const nativeAdRef = useRef({ done: null, timer: null }); // ネイティブ広告応答待ちの状態
 
   // ネイティブ(App.js)から広告結果を受け取る。
-  //  'shown' … 実 AdMob 広告を表示済み → そのまま続行
-  //  'none'  … 広告が用意できない(Expo Go / 在庫なし等) → プレースホルダーを表示してから続行
+  //  'opened' … 実 AdMob 広告の表示が始まった → 保険タイマーだけ解除し、閉じるまで待つ(done はまだ呼ばない)
+  //  'shown'  … 実 AdMob 広告を表示済み(閉じた) → そのまま続行
+  //  'none'   … 広告が用意できない(Expo Go / 在庫なし等) → プレースホルダーを表示してから続行
   function handleNativeAdResult(result) {
     const st = nativeAdRef.current;
+    if (result === "opened") {
+      // 実広告が開き始めたのが確認できたので、「応答なし」とみなす保険タイマーは不要になる。
+      // ここで解除しておかないと、広告の表示中(数秒〜数十秒)にタイマーが先に発火し、
+      // 広告終了後にプレースホルダーが余分に出てしまう。
+      if (st.timer) {
+        clearTimeout(st.timer);
+        st.timer = null;
+      }
+      return;
+    }
     if (st.timer) {
       clearTimeout(st.timer);
       st.timer = null;
@@ -2215,15 +2231,20 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
     };
   });
 
-  // 広告を表示してから done を実行する。
+  // 広告を表示してから done を実行する。頻度を抑えるため2回に1回だけ実際に広告を出す。
   function showAdThen(name, done) {
+    adRequestCountRef.current += 1;
+    if (adRequestCountRef.current % 2 !== 0) {
+      done();
+      return;
+    }
     if (import.meta.env.VITE_NATIVE_APP) {
       // ネイティブアプリ版: AdMob 広告表示をネイティブに依頼し、結果を待つ。
       if (typeof window !== "undefined" && window.ReactNativeWebView) {
         const st = nativeAdRef.current;
         st.done = done;
         if (st.timer) clearTimeout(st.timer);
-        // 保険: 応答が無ければプレースホルダーを出して続行
+        // 保険: 広告が開いた合図('opened')も応答も無ければプレースホルダーを出して続行
         st.timer = setTimeout(() => handleNativeAdResult("none"), 8000);
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: "show-ad" }));
       } else {
