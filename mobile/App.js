@@ -1,13 +1,43 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
+import { useCallback, useState } from "react";
+import { StyleSheet, View, Text, ActivityIndicator, Platform } from "react-native";
 import { WebView } from "react-native-webview";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import GMA, { adsAvailable, interstitialUnitId } from "./ads";
+import GMA, { adsAvailable, bannerUnitId } from "./ads";
 
 // ゲーム本体は Vite で 1 枚に固めた自己完結 HTML(assets/app.html)。
 // npm run build:app（リポジトリ直下）で生成され、ここで WebView に読み込む。
 const GAME_HTML = require("./assets/app.html");
+
+// 標準的なバナー広告の高さ。実広告が読み込まれるまで(SDK未対応・審査中で広告が
+// 配信されない・在庫なし等)は下のプレースホルダーでこの高さのヘッダー領域を確保し、
+// 「広告なしで何も表示されない」状態にしない。実広告が読み込まれたらそちらに差し替わる。
+const BANNER_HEIGHT = 50;
+
+// バナー広告本体 + プレースホルダー。GMA.BannerAd は読み込みが完了するまで
+// 内部的に幅・高さ0で描画される(=読み込み前は何も見えない)ため、読み込み完了
+// (onAdLoaded)するまではダミーの広告スペースを重ねて表示しておく。
+function AdBanner({ unitId }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <View style={styles.bannerWrap}>
+      {unitId && (
+        <GMA.BannerAd
+          unitId={unitId}
+          size={GMA.BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+          onAdLoaded={() => setLoaded(true)}
+          onAdFailedToLoad={() => setLoaded(false)}
+        />
+      )}
+      {!loaded && (
+        <View style={styles.placeholder} pointerEvents="none">
+          <Text style={styles.placeholderText}>広告スペース</Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 // WebView 内でのピンチズーム・長押しメニュー・オーバースクロールを抑制し、
 // ネイティブアプリらしい挙動にする注入スクリプト。
@@ -20,125 +50,31 @@ const INJECTED_JS = `
   true;
 `;
 
-// ゲーム側(app.html)からのメッセージで広告を出すためのブリッジ。
-// ゲームは区切り(クリア/ホームに戻る)で {type:'show-ad'} を postMessage する。
+// ゲーム側(app.html)からのメッセージでヘッダーのバナー広告を出し分けるブリッジ。
+// ゲームはレイアウト画面にいる間だけ {type:'banner', show:true} を postMessage し、
+// ホーム画面・結果画面では {type:'banner', show:false} を送る。
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const webRef = useRef(null);
-  // インタースティシャル広告の状態を保持
-  const adRef = useRef({ ad: null, loaded: false, pending: false });
+  const [showBanner, setShowBanner] = useState(false);
 
-  // WebView に広告結果を伝える。
-  //  'shown' … 実広告を表示済み → ゲームはそのまま続行
-  //  'none'  … 広告が無い → ゲーム側が代わりのプレースホルダーを表示
-  const sendAdResult = useCallback((result) => {
-    if (webRef.current) {
-      webRef.current.injectJavaScript(
-        `window.__kaigiAdResult && window.__kaigiAdResult(${JSON.stringify(result)}); true;`
-      );
+  const onMessage = useCallback((event) => {
+    let msg = null;
+    try {
+      msg = JSON.parse(event.nativeEvent.data);
+    } catch (e) {
+      return;
     }
+    if (msg && msg.type === "banner") setShowBanner(!!msg.show);
   }, []);
 
-  // 次のインタースティシャルを読み込む
-  const loadInterstitial = useCallback(() => {
-    if (!adsAvailable || !GMA) return;
-    const unitId = interstitialUnitId();
-    if (!unitId) return;
-    try {
-      const ad = GMA.InterstitialAd.createForAdRequest(unitId, {
-        requestNonPersonalizedAdsOnly: true,
-      });
-      adRef.current.ad = ad;
-      adRef.current.loaded = false;
-      const onLoaded = () => {
-        adRef.current.loaded = true;
-      };
-      const onOpened = () => {
-        // 実広告の表示が始まった → ゲーム側の「応答なし」保険タイマーを止めさせる。
-        // これを送らないと、広告の表示中にタイマーが先に切れて「広告なし」扱いになり、
-        // 広告が閉じた後にゲーム側のプレースホルダーが余分に表示されてしまう。
-        if (adRef.current.pending) sendAdResult("opened");
-      };
-      const onClosed = () => {
-        // 実広告が閉じた → 保留中なら「表示済み」を通知し、次を先読み
-        if (adRef.current.pending) {
-          adRef.current.pending = false;
-          sendAdResult("shown");
-        }
-        loadInterstitial();
-      };
-      const onError = () => {
-        // 読み込み/表示に失敗 → 保留中なら「広告なし」を通知(プレースホルダーへ)
-        adRef.current.loaded = false;
-        if (adRef.current.pending) {
-          adRef.current.pending = false;
-          sendAdResult("none");
-        }
-      };
-      ad.addAdEventListener(GMA.AdEventType.LOADED, onLoaded);
-      ad.addAdEventListener(GMA.AdEventType.OPENED, onOpened);
-      ad.addAdEventListener(GMA.AdEventType.CLOSED, onClosed);
-      ad.addAdEventListener(GMA.AdEventType.ERROR, onError);
-      ad.load();
-    } catch (e) {
-      // 何かあってもゲームは止めない
-      adRef.current.ad = null;
-      adRef.current.loaded = false;
-    }
-  }, [sendAdResult]);
-
-  useEffect(() => {
-    if (!adsAvailable || !GMA) return;
-    let mounted = true;
-    GMA.default
-      ? GMA.default().initialize().then(() => mounted && loadInterstitial())
-      : GMA.mobileAds().initialize().then(() => mounted && loadInterstitial());
-    return () => {
-      mounted = false;
-    };
-  }, [loadInterstitial]);
-
-  // ゲームから広告要求が来たとき
-  const handleShowAd = useCallback(() => {
-    const state = adRef.current;
-    if (adsAvailable && state.ad && state.loaded) {
-      // 実広告を表示。閉じたら onClosed で 'shown' を通知する。
-      state.pending = true;
-      state.loaded = false;
-      try {
-        state.ad.show();
-      } catch (e) {
-        // 表示できなかった → プレースホルダー表示に切り替え
-        state.pending = false;
-        sendAdResult("none");
-        loadInterstitial();
-      }
-    } else {
-      // 広告が未準備(Expo Go / 在庫なし) → ゲーム側のプレースホルダーを表示させ、次を読み込む
-      sendAdResult("none");
-      loadInterstitial();
-    }
-  }, [sendAdResult, loadInterstitial]);
-
-  const onMessage = useCallback(
-    (event) => {
-      let msg = null;
-      try {
-        msg = JSON.parse(event.nativeEvent.data);
-      } catch (e) {
-        return;
-      }
-      if (msg && msg.type === "show-ad") handleShowAd();
-    },
-    [handleShowAd]
-  );
+  const unitId = adsAvailable ? bannerUnitId() : null;
 
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={["top", "bottom", "left", "right"]}>
         <StatusBar style="dark" />
+        {showBanner && <AdBanner unitId={unitId} />}
         <WebView
-          ref={webRef}
           source={GAME_HTML}
           originWhitelist={["*"]}
           style={styles.webview}
@@ -171,6 +107,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
+  },
+  bannerWrap: {
+    width: "100%",
+    minHeight: BANNER_HEIGHT,
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+  },
+  placeholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F5F3",
+    borderBottomWidth: 1,
+    borderColor: "#E0E0DC",
+  },
+  placeholderText: {
+    fontSize: 11,
+    letterSpacing: 1,
+    color: "#B4B4AE",
   },
   webview: {
     flex: 1,

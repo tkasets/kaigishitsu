@@ -2101,10 +2101,13 @@ function requestRealAd(name, done) {
   }
 }
 
-// ネイティブアプリ版の広告ブリッジはコンポーネント内(showAdThen / handleNativeAdResult)で
-// 扱う。ネイティブへ {type:'show-ad'} を送り、結果を window.__kaigiAdResult('shown'|'none')
-// で受け取る。'shown' は実広告表示済み→そのまま続行、'none' は広告なし→下の
-// プレースホルダー画面を表示してから続行する。
+// ネイティブアプリ版は区切りごとのインタースティシャルではなく、レイアウト画面の間
+// ずっと出しっぱなしのバナー広告(ヘッダー)を使う。表示/非表示はこの postMessage で
+// ネイティブ(App.js)に伝える。ホーム画面・結果画面では出さない。
+function postBannerVisibility(visible) {
+  if (typeof window === "undefined" || !window.ReactNativeWebView) return;
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: "banner", show: visible }));
+}
 
 // 実広告が出せない期間(審査中など)に表示する広告の代わりの全画面。カウントダウン後に
 // 自動で閉じ、いつでも「スキップ」で閉じられる。onDone は必ず1回だけ呼ぶ。
@@ -2190,68 +2193,32 @@ function DeskLayoutPuzzle({ onBackHome, replayIntro, legendaryEventTriggered, se
   const [showItoComment, setShowItoComment] = useState(false);
   const [showSpecialEvent, setShowSpecialEvent] = useState(false);
   const [specialEventStep, setSpecialEventStep] = useState(0); // 0: レイアート宣言, 1: 2年後...
-  const [adOverlay, setAdOverlay] = useState(null); // 広告表示待ちのコールバック { done } | null
-  const nativeAdRef = useRef({ done: null, timer: null }); // ネイティブ広告応答待ちの状態
+  const [adOverlay, setAdOverlay] = useState(null); // 広告表示待ちのコールバック { done } | null (Web版のみ使用)
 
-  // ネイティブ(App.js)から広告結果を受け取る。
-  //  'opened' … 実 AdMob 広告の表示が始まった → 保険タイマーだけ解除し、閉じるまで待つ(done はまだ呼ばない)
-  //  'shown'  … 実 AdMob 広告を表示済み(閉じた) → そのまま続行
-  //  'none'   … 広告が用意できない(Expo Go / 在庫なし等) → プレースホルダーを表示してから続行
-  function handleNativeAdResult(result) {
-    const st = nativeAdRef.current;
-    if (result === "opened") {
-      // 実広告が開き始めたのが確認できたので、「応答なし」とみなす保険タイマーは不要になる。
-      // ここで解除しておかないと、広告の表示中(数秒〜数十秒)にタイマーが先に発火し、
-      // 広告終了後にプレースホルダーが余分に出てしまう。
-      if (st.timer) {
-        clearTimeout(st.timer);
-        st.timer = null;
-      }
+  // ネイティブアプリ版のバナー広告(ヘッダー常時表示)の表示/非表示をネイティブに伝える。
+  // レイアウト画面がマウントされている間は表示し、結果画面(showComplete)や覚醒演出
+  // (showSpecialEvent)の間は非表示にする。
+  useEffect(() => {
+    postBannerVisibility(!showComplete && !showSpecialEvent);
+  }, [showComplete, showSpecialEvent]);
+  useEffect(() => {
+    return () => postBannerVisibility(false); // ホームなどに戻ってアンマウントされたら必ず消す
+  }, []);
+
+  // 広告を表示してから done を実行する(Web版のみ。区切りごとのインタースティシャル)。
+  // ネイティブアプリ版は常時表示のバナー広告に置き換えたので、ここでは何もせず続行する。
+  function showAdThen(name, done) {
+    if (import.meta.env.VITE_NATIVE_APP) {
+      done();
       return;
     }
-    if (st.timer) {
-      clearTimeout(st.timer);
-      st.timer = null;
-    }
-    const done = st.done;
-    st.done = null;
-    if (typeof done !== "function") return;
-    if (result === "shown") {
-      done();
-    } else {
-      setAdOverlay({ done });
-    }
-  }
-  // ネイティブ側が window.__kaigiAdResult(...) で呼べるよう公開しておく。
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.__kaigiAdResult = handleNativeAdResult;
-    return () => {
-      if (window.__kaigiAdResult === handleNativeAdResult) delete window.__kaigiAdResult;
-    };
-  });
-
-  // 広告を表示してから done を実行する。頻度を抑えるため2回に1回だけ実際に広告を出す。
-  function showAdThen(name, done) {
+    // 頻度を抑えるため2回に1回だけ実際に広告を出す。
     adRequestCountRef.current += 1;
     if (adRequestCountRef.current % 2 !== 0) {
       done();
       return;
     }
-    if (import.meta.env.VITE_NATIVE_APP) {
-      // ネイティブアプリ版: AdMob 広告表示をネイティブに依頼し、結果を待つ。
-      if (typeof window !== "undefined" && window.ReactNativeWebView) {
-        const st = nativeAdRef.current;
-        st.done = done;
-        if (st.timer) clearTimeout(st.timer);
-        // 保険: 広告が開いた合図('opened')も応答も無ければプレースホルダーを出して続行
-        st.timer = setTimeout(() => handleNativeAdResult("none"), 8000);
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: "show-ad" }));
-      } else {
-        // WebView 外(通常ブラウザでネイティブフラグだけ立つ場合)はプレースホルダー
-        setAdOverlay({ done });
-      }
-    } else if (USE_REAL_ADS) {
+    if (USE_REAL_ADS) {
       requestRealAd(name, done);
     } else {
       setAdOverlay({ done });

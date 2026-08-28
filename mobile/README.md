@@ -84,8 +84,13 @@ npx eas submit --platform ios --latest
 
 ## 注意点
 
-- **広告**: アプリ内は AdSense を除外済み（規約違反・審査落ち回避）。
-  収益化する場合は AdMob（`react-native-google-mobile-ads`）を別途組み込む。
+- **広告**: アプリ内は AdSense を除外済み（規約違反・審査落ち回避）。AdMob
+  （`react-native-google-mobile-ads`）のバナー広告を、レイアウト画面(プレイ中)の
+  間だけヘッダーに常時表示する（ホーム画面・結果画面では非表示）。ゲーム側
+  (`src/desk-layout-puzzle.jsx`)が画面遷移に応じて `{type:'banner', show}` を
+  `postMessage` し、`mobile/App.js` がそれを見て `BannerAd` の表示/非表示を切り替える。
+  本番の広告ユニットIDは `mobile/ads.js` の `PROD_BANNER_IOS` に設定すること
+  （インタースティシャル用のIDとは別に、AdMob管理画面で新規に発行が必要）。
 - **アイコン/スプラッシュ**: `assets/icon.png` `assets/splash.png` `assets/adaptive-icon.png`
   は仮のプレースホルダー。本番前に差し替え推奨（icon は 1024×1024）。
 - **Apple審査 4.2**: 「単なるWebサイトの再パッケージ」は却下対象。本アプリは

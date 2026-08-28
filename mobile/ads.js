@@ -7,8 +7,8 @@
 //  1. https://admob.google.com でアカウント作成、iOSアプリを登録
 //  2. アプリの「アプリID」(ca-app-pub-XXXX~YYYY)を app.json の plugins →
 //     react-native-google-mobile-ads の iosAppId に設定
-//  3. 「インタースティシャル」広告ユニットを作成し、その広告ユニットID
-//     (ca-app-pub-XXXX/ZZZZ)を下の PROD_INTERSTITIAL_IOS に設定
+//  3. 「バナー」広告ユニットを作成し、その広告ユニットID(ca-app-pub-XXXX/ZZZZ)を
+//     下の PROD_BANNER_IOS に設定
 import { Platform, NativeModules } from "react-native";
 
 // react-native-google-mobile-ads はネイティブモジュール。
@@ -25,16 +25,17 @@ try {
 
 export const adsAvailable = !!GMA;
 
-// 本番の実広告ユニットID(要差し替え)。
-const PROD_INTERSTITIAL_IOS = "ca-app-pub-1081803676733486/9077120640";
-const PROD_INTERSTITIAL_ANDROID = "ca-app-pub-0000000000000000/0000000000";
+// 本番の実広告ユニットID。
+const PROD_BANNER_IOS = "ca-app-pub-1081803676733486/9056232471";
+// Android版は未リリース・広告ユニット未発行のため未設定(テストIDにフォールバック)。
+const PROD_BANNER_ANDROID = "ca-app-pub-0000000000000000/0000000000";
 
-export function interstitialUnitId() {
+export function bannerUnitId() {
   if (!GMA) return null;
   // 開発中・実IDが未設定のうちはテストIDを使う。
-  if (__DEV__) return GMA.TestIds.INTERSTITIAL;
-  const id = Platform.OS === "ios" ? PROD_INTERSTITIAL_IOS : PROD_INTERSTITIAL_ANDROID;
-  if (id.includes("0000000000")) return GMA.TestIds.INTERSTITIAL; // 未設定ならテスト
+  if (__DEV__) return GMA.TestIds.BANNER;
+  const id = Platform.OS === "ios" ? PROD_BANNER_IOS : PROD_BANNER_ANDROID;
+  if (id.includes("0000000000")) return GMA.TestIds.BANNER; // 未設定ならテスト
   return id;
 }
 

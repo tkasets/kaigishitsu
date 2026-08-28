@@ -2,7 +2,7 @@
   "expo": {
     "name": "会議室レイアウター",
     "slug": "kaigishitsu",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kaigishitsu",
@@ -21,7 +21,9 @@
       "bundleIdentifier": "com.tkasets.kaigishitsu",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDevelopmentRegion": "ja",
+        "CFBundleLocalizations": ["ja"]
       }
     },
     "android": {
