@@ -1938,7 +1938,18 @@ function IntroHomeScreen({ onStart, onCharacters, ready, legendaryEventTriggered
         fontFamily: "'Hiragino Mincho ProN', 'Yu Mincho', 'YuMincho', 'MS PMincho', serif",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: 16, flexShrink: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16, flexShrink: 0 }}>
+        {/* t-kasets のアプリ一覧へ戻るリンク。ネイティブアプリ版では出さない */}
+        {import.meta.env.VITE_NATIVE_APP ? (
+          <span />
+        ) : (
+          <a
+            href="https://t-kasets.com"
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #D8D8D3", background: "#FFFFFF", fontSize: 12, color: "#3A3A36", textDecoration: "none" }}
+          >
+            &lt; アプリ一覧
+          </a>
+        )}
         <button
           onClick={onCharacters}
           disabled={!ready}
